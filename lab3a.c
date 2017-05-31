@@ -95,18 +95,21 @@ int main(int argc, char *argv[]){
     }      
   }
   
+  //declare variables for BFREE AND IFREE
+  int val;
+  int j;
+  int l;
+  int bitmask;
+  int isFree;
   //BFREE parsing (free block entries)
   for(i = 0; i <= tot_groups; i++){//for each group, analyze free bitmap
     if(tot_groups != 0 && i == tot_groups)
       break;
     int j = 0;
     for(j = 0; j < block_size; j++){ //check free or not free status of each block using this bitmap
-      int isFree;
       pread(fileFD, &isFree, 1, (block_size*group[i].free_block_bitmap)+j);
       //go through each bit of the byte
-      int l;
-      int bitmask = 1; //to get 1 bit at a time
-      int val;
+      bitmask = 1; //to get 1 bit at a time
       for(l = 0; l < 8; l++){
 	val = isFree & bitmask;
 	if(val == 0)//0 means free, so do output
@@ -114,6 +117,23 @@ int main(int argc, char *argv[]){
         bitmask = bitmask << 1; //shift mask to get the next bit
       }
      }
+  }
+
+  //IFREE parsing (free inode entries)
+  for(i = 0; i <=tot_groups; i++){//each group contains a inode bitmap
+    if(tot_groups != 0 && i == tot_groups)
+      break;
+    for(j = 0; j<block_size; j++){
+      pread(fileFD, &isFree, 1, (block_size*group[i].free_inode_bitmap)+j);
+      //go through each bit of the byte
+      bitmask = 1;
+      for(l = 0; l<8; l++){
+	val = isFree & bitmask;
+	if(val == 0)//0 means free so output
+	  fprintf(stdout, "IFREE,%d\n",(j*8 + l + (i*block_per_group) + 1));
+        bitmask = bitmask << 1;
+      }
+    }
   }
   exit(0); 
 }

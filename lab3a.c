@@ -7,6 +7,16 @@
 #include <unistd.h>
 #include <string.h>
 
+
+//create struct to hold group info
+struct my_group{
+  int blocks_per_group;
+  int num_free_blocks;
+  int num_free_inodes;
+  int free_block_bitmap;
+  int free_inode_bitmap;
+  int first_inode;
+};
 int main(int argc, char *argv[]){
   //check arg
   if(argc != 2){
@@ -46,6 +56,7 @@ int main(int argc, char *argv[]){
   //GROUP PARSING
   //calculate total number of groups by: total blocks/blocks per group
   int tot_groups = block_count/block_per_group;
+  struct my_group *group = malloc(tot_groups * sizeof(struct my_group));
   int i = 0;
   for( i = 0; i <= tot_groups; i++){
     if(tot_groups != 0 && i == tot_groups)
@@ -55,27 +66,54 @@ int main(int argc, char *argv[]){
     //get free blocks
     int freeblocks;
     pread(fileFD, &freeblocks, 2, groupOffset + 12);
+    group[i].num_free_blocks = freeblocks;
     //get free inodes
     int freeinodes;
     pread(fileFD, &freeinodes, 2, groupOffset + 14);
+    group[i].num_free_inodes = freeinodes;
     //get block num of free block bitmap
     int freeBlockBitmap;
     pread(fileFD, &freeBlockBitmap, 4, groupOffset);
+    group[i].free_block_bitmap = freeBlockBitmap;
     //get free inode bitmap 
     int freeInodeBitmap;
     pread(fileFD, &freeInodeBitmap, 4, groupOffset + 4);
+    group[i].free_inode_bitmap = freeInodeBitmap;
     //get first block of inodes
     int firstInode;
     pread(fileFD, &firstInode, 4, groupOffset + 8);
+    group[i].first_inode = firstInode;;
     //Write CSV for group                                                                                                                        
     //if its not the last group, its constant blocks_per_group from super block
-    if(i == (tot_groups -1))
-      fprintf(stdout, "GROUP,%i,%d,%d,%d,%d,%d,%d,%d\n", i, block_count, inodes_per_group, freeblocks, freeinodes, freeBlockBitmap, freeInodeBitmap, firstInode);
+    if(i == (tot_groups -1)){
+      group[i].blocks_per_group = block_count;
+      fprintf(stdout, "GROUP,%i,%d,%d,%d,%d,%d,%d,%d\n", i, block_count, inodes_per_group, freeblocks, freeinodes, freeBlockBitmap, freeInodeBitmap, firstInode);      
+    }
     else{
-      int blocks_per_last_group = block_count% block_per_group;
-      fprintf(stdout, "GROUP,%i,%d,%d,%d,%d,%d,%d,%d\n", i, blocks_per_last_group, inodes_per_group, freeblocks, freeinodes, freeBlockBitmap, freeInodeBitmap, firstInode);
-    }
-      
-    }
+      group[i].blocks_per_group = block_count% block_per_group;
+      fprintf(stdout, "GROUP,%i,%d,%d,%d,%d,%d,%d,%d\n", i, group[i].blocks_per_group, inodes_per_group, freeblocks, freeinodes, freeBlockBitmap, freeInodeBitmap, firstInode);
+    }      
+  }
+  
+  //BFREE parsing (free block entries)
+  for(i = 0; i <= tot_groups; i++){//for each group, analyze free bitmap
+    if(tot_groups != 0 && i == tot_groups)
+      break;
+    int j = 0;
+    for(j = 0; j < block_size; j++){ //check free or not free status of each block using this bitmap
+      int isFree;
+      pread(fileFD, &isFree, 1, (block_size*group[i].free_block_bitmap)+j);
+      //go through each bit of the byte
+      int l;
+      int bitmask = 1; //to get 1 bit at a time
+      int val;
+      for(l = 0; l < 8; l++){
+	val = isFree & bitmask;
+	if(val == 0)//0 means free, so do output
+	  fprintf(stdout, "BFREE,%d\n", (j*8) + l + (i*block_per_group) + 1);
+        bitmask = bitmask << 1; //shift mask to get the next bit
+      }
+     }
+  }
   exit(0); 
 }

@@ -22,10 +22,8 @@ int n_usedinodes;
 struct ext2_super_block* superblock;
 struct ext2_group_desc* groups;
 struct ext2_inode* inodes;
+struct ext2_dir_entry* dirs;
 __u32 *usedinode_nums;
-
-//saving parent inode information
-int *parent_inode_directory;
 
 void p_superblock() {
   // Superblock is located at a byte offset 1024 from the beginning of the file
@@ -137,6 +135,7 @@ void cleanup() {
   free(superblock);
   free(groups);
   free(inodes);
+  free(dirs);
 }
 
 void singleIndirect(int inodeNum, int finaloffset){ //final offset includes skipping over the 12 direct blocks
@@ -206,8 +205,12 @@ void tripleIndirect(int inodeNum, int finaloffset){
       }
     }
   }
+}
+
+void p_dir() {
 
 }
+
 void p_inode() {
   int modulo;
   int offset;
@@ -215,12 +218,14 @@ void p_inode() {
   char file_type;
   
   inodes = malloc(sizeof(struct ext2_inode) * n_usedinodes);
+  dirs = malloc(sizeof(struct ext2_dir_entry) * n_usedinodes);
   for (int j = 0; j < n_usedinodes; j++) {
   	  gp = (usedinode_nums[j] - 1) / superblock->s_inodes_per_group;
   	  modulo = (usedinode_nums[j] - 1) % superblock->s_inodes_per_group;
   	  offset = groups[gp].bg_inode_table * superblock->s_log_block_size;
   	  int final_offset = offset + modulo * INODE_SIZE;
   	  pread(fileFD, &inodes[j].i_mode, 2, final_offset + 0);
+  	  __u16 mode = inodes[j].i_mode & (S_IRWXU | S_IRWXG | S_IRWXO);
 
   	  // File type
   	  if ((inodes[j].i_mode & 0x8000) && (inodes[j].i_mode & 0x2000)) {
@@ -269,8 +274,8 @@ void p_inode() {
 	  // Print it all out
 	 
 	  
-	  fprintf(stdout, "INODE,%d,%c,0%o,%d,%d,%d,%s,%s,%s,%d,%d,", usedinode_nums[j], 
-	  	  file_type, inodes[j].i_mode, inodes[j].i_uid, inodes[j].i_gid, inodes[j].i_links_count,createstring,
+	  fprintf(stdout, "INODE,%d,%c,%o,%d,%d,%d,%s,%s,%s,%d,%d,", usedinode_nums[j], 
+	  	  file_type, mode, inodes[j].i_uid, inodes[j].i_gid, inodes[j].i_links_count,createstring,
 	  	  modstring, accstring, inodes[j].i_size, inodes[j].i_blocks);
 	  
 	  // Block pointers

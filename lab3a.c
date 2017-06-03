@@ -19,11 +19,13 @@
 __u16 n_groups;
 int fileFD;
 int n_usedinodes;
-
 struct ext2_super_block* superblock;
 struct ext2_group_desc* groups;
 struct ext2_inode* inodes;
 __u32 *usedinode_nums;
+
+//saving parent inode information
+int *parent_inode_directory;
 
 void p_superblock() {
   // Superblock is located at a byte offset 1024 from the beginning of the file
@@ -137,11 +139,81 @@ void cleanup() {
   free(inodes);
 }
 
+void singleIndirect(int inodeNum, int finaloffset){ //final offset includes skipping over the 12 direct blocks
+  int offset = 0; //TODO: Fix the offset. not sure what it is
+  int blockNum=0;
+  int block;
+  pread(fileFD, &block, 4, finaloffset);
+  int isBlock;
+  int j;
+  for(j = 0; j < superblock->s_log_block_size/4; j++){//block size/4 = size
+    pread(fileFD, &isBlock, 4, block * superblock->s_log_block_size + j*4);
+    offset++;
+    if(isBlock != 0)
+      fprintf(stdout, "INDIRECT,%d,%d,%d,%d,%d\n", inodeNum, 1, 12 + j, block, isBlock);
+  }
+}
+
+void doubleIndirect(int inodeNum, int finaloffset){
+  int offset = 0; //TODO: Fix the offset. not sure what it is                                                                                  
+  int blockNum=0;
+  int block;
+  pread(fileFD, &block, 4, finaloffset);
+  int isBlock;
+  int j;
+  int isBlock2;
+  for(j = 0; j < superblock->s_log_block_size/4; j++){
+    pread(fileFD, &isBlock, 4, block * superblock->s_log_block_size + j*4);
+    offset++;
+    if(isBlock != 0){
+      fprintf(stdout, "INDIRECT,%d,%d,%d,%d,%d\n", inodeNum, 2, 13+j, block, isBlock);
+      int k;
+      for(k = 0; k < superblock->s_log_block_size/4; k++){
+	pread(fileFD, &isBlock2, 4, isBlock * superblock->s_log_block_size + (k*4));
+	if(isBlock2 != 0){//valid block
+	   fprintf(stdout, "INDIRECT,%d,%d,%d,%d,%d\n", inodeNum, 1, 12+j, isBlock, isBlock2);
+	}
+      }
+    }
+  }
+}
+
+void tripleIndirect(int inodeNum, int finaloffset){
+  int offset = 0; //TODO: Fix the offset. not sure what it is                                                                                       
+  int blockNum=0;
+  int block;
+  pread(fileFD, &block, 4, finaloffset);
+  int isBlock;
+  int j, k, m;
+  int isBlock2;
+  int isBlock3;
+  for(j = 0; j < superblock->s_log_block_size/4; j++){
+    pread(fileFD, &isBlock, 4, block * superblock->s_log_block_size + j*4);
+    offset++;
+    if(isBlock != 0){
+      fprintf(stdout, "INDIRECT,%d,%d,%d,%d,%d\n", inodeNum, 3, 14+j, block, isBlock);
+      for(k = 0; k < superblock->s_log_block_size/4; k++){
+        pread(fileFD, &isBlock2, 4, isBlock * superblock->s_log_block_size + (k*4));
+        if(isBlock2 != 0){//valid block                                                                                                           
+	  fprintf(stdout, "INDIRECT,%d,%d,%d,%d,%d\n", inodeNum, 2, 13+j, isBlock, isBlock2);
+	  for(m = 0; m < superblock->s_log_block_size/4; m++){
+	    pread(fileFD, &isBlock3, 4, isBlock2 * superblock->s_log_block_size + (k*4));
+	    if(isBlock3 != 0){
+	      fprintf(stdout,"INDIRECT,%d,%d,%d,%d,%d\n", inodeNum, 1, 12+j, isBlock, isBlock3);
+	    }
+	  }
+        }
+      }
+    }
+  }
+
+}
 void p_inode() {
   int modulo;
   int offset;
   int gp;
   char file_type;
+  
   inodes = malloc(sizeof(struct ext2_inode) * n_usedinodes);
   for (int j = 0; j < n_usedinodes; j++) {
   	  gp = (usedinode_nums[j] - 1) / superblock->s_inodes_per_group;
@@ -203,19 +275,21 @@ void p_inode() {
 	  
 	  // Block pointers
 	  int blockpointer_offset = 40;
-	  for (int p = 0; p < 15; p++) {
+	  int p;
+	  for (p = 0; p < 15; p++) {
 	  	pread(fileFD, &inodes[j].i_block[p], 4, final_offset + blockpointer_offset);
 	  	// Print the block pointer
 		if(p == 14)
 		  fprintf(stdout,"%d\n", inodes[j].i_block[p]);
 		else
 		  fprintf(stdout,"%d,",inodes[j].i_block[p]);
-		//	  	if (inodes[k].bp[p] != 0 && p == 12) {
-	  	  // Indirect
-		//	}
-	  	blockpointer_offset += 4;
+		blockpointer_offset += 4;
 	  }
-	  
+	  if(file_type == 'd' || file_type == 'f'){
+	    singleIndirect(j+1, final_offset + 40 + (12*4));
+	    doubleIndirect(j+1, final_offset + 40 + (13*4));
+	    tripleIndirect(j+1, final_offset + 40 + (14*4));
+	  }
   }
 }
 

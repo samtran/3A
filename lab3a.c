@@ -6,6 +6,7 @@
 #include "ext2_fs.h"
 #include <unistd.h>
 #include <string.h>
+#include <time.h>
 
 // Code to ask Sam about is denoted with "ASK SAM"
 // Code to ask Apurva about is denoted with "ASK APURVA"
@@ -167,18 +168,28 @@ void p_inode() {
 	  // Check if inode is valid: link count != 0, mode != 0
 	  if (inodes[j].i_links_count == 0 || inodes[j].i_mode == 0)
 	  	continue;
-
   	  // Owner
   	  pread(fileFD, &inodes[j].i_uid, 2, final_offset + 2);
   	  // Group
-  	  //inodes[j].i_gid = gp;
 	  pread(fileFD, &inodes[j].i_gid, 2, final_offset + 24);
 	  // Creation Time
 	  pread(fileFD, &inodes[j].i_ctime, 4, final_offset + 12);
+	  time_t mytime = (time_t) inodes[j].i_ctime;
+          char createstring[18];
+          struct tm *tmc  = gmtime(&mytime);
+          strftime(createstring,18, "%x %X",tmc);
 	  // Modification Time
-	  pread(fileFD, &inodes[j].i_mtime, 4, final_offset + 16);
+	  pread(fileFD, &inodes[j].i_mtime, 4, final_offset + 16);	  
+	  mytime = (time_t) inodes[j].i_mtime;
+	  char modstring[18];
+	  struct tm *tmm  = gmtime(&mytime);
+	  strftime(modstring,18, "%x %X",tmm);
 	  // Access time
 	  pread(fileFD, &inodes[j].i_atime, 4, final_offset + 8);
+	  mytime = (time_t) inodes[j].i_atime;
+          char accstring[18];
+          struct tm *tma  = gmtime(&mytime);
+          strftime(accstring,18, "%x %X",tma);
 	  // File size
 	  pread(fileFD, &inodes[j].i_size, 4, final_offset + 4);
 	  // N Blocks
@@ -186,21 +197,25 @@ void p_inode() {
 	  // Print it all out
 	 
 	  
-	  fprintf(stdout, "INODE,%d,%c,%o,%d,%d,%d,%d,%d,%d,%d,%d\n", usedinode_nums[j], 
-	  	  file_type, inodes[j].i_mode, inodes[j].i_uid, inodes[j].i_gid, inodes[j].i_ctime,
-	  	  inodes[j].i_mtime, inodes[j].i_atime, inodes[j].i_size, inodes[j].i_blocks);
-	  /*
+	  fprintf(stdout, "INODE,%d,%c,0%o,%d,%d,%d,%s,%s,%s,%d,%d,", usedinode_nums[j], 
+	  	  file_type, inodes[j].i_mode, inodes[j].i_uid, inodes[j].i_gid, inodes[j].i_links_count,createstring,
+	  	  modstring, accstring, inodes[j].i_size, inodes[j].i_blocks);
+	  
 	  // Block pointers
 	  int blockpointer_offset = 40;
 	  for (int p = 0; p < 15; p++) {
-	  	pread(fileFD, &inodes[k].bp[p], 4, final_offset + blockpointer_offset);
+	  	pread(fileFD, &inodes[j].i_block[p], 4, final_offset + blockpointer_offset);
 	  	// Print the block pointer
-	  	if (inodes[k].bp[p] != 0 && p == 12) {
+		if(p == 14)
+		  fprintf(stdout,"%d\n", inodes[j].i_block[p]);
+		else
+		  fprintf(stdout,"%d,",inodes[j].i_block[p]);
+		//	  	if (inodes[k].bp[p] != 0 && p == 12) {
 	  	  // Indirect
-	  	}
+		//	}
 	  	blockpointer_offset += 4;
 	  }
-	  */
+	  
   }
 }
 

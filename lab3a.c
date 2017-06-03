@@ -13,13 +13,16 @@
 #define SUPERBLOCK_OFFSET 1024
 #define GROUP_OFFSET SUPERBLOCK_OFFSET + 1024
 #define GROUP_SIZE 32
+#define INODE_SIZE 128
 // Number of groups in file system
 __u16 n_groups;
 int fileFD;
+int n_usedinodes;
 
 struct ext2_super_block* superblock;
 struct ext2_group_desc* groups;
 struct ext2_inode* inodes;
+__u32 *usedinode_nums;
 
 void p_superblock() {
   // Superblock is located at a byte offset 1024 from the beginning of the file
@@ -87,7 +90,7 @@ void p_bfree() {
   	  	val = isFree & bitmask;
   	  	if (val == 0) {
   	  	  fprintf(stdout, "BFREE,%d\n", (j*8) + k + (i*superblock->s_blocks_per_group) + 1);
-  	  	}
+		}	
   	  	bitmask = bitmask << 1;
   	  }
   	}
@@ -98,6 +101,9 @@ void p_ifree() {
   int bitmask;
   int val;
   int isFree;
+  int bit_num, inode_gp;
+  n_usedinodes = 0;
+  usedinode_nums = malloc(sizeof(__u32) * superblock->s_inodes_count);
   for (int i = 0; i <= n_groups; i++) {
   	if (n_groups != 0 && i == n_groups)
   	  break;
@@ -105,18 +111,24 @@ void p_ifree() {
   	  pread(fileFD, &isFree, 1, (superblock->s_log_block_size * groups[i].bg_inode_bitmap) + j);
   	  bitmask = 1;
   	  for (int k = 0; k < 8; k++) {
-  	  	val = isFree & bitmask;
-  	  	if (val == 0)
-  	  	  fprintf(stdout, "IFREE,%d\n", (j*8) + k + (i*superblock->s_inodes_per_group) + 1);
-  	  	bitmask = bitmask << 1;
-  	  }
+		int bit_num = (j*8) + k + 1;
+		inode_gp = i*superblock->s_inodes_per_group;
+		if (bit_num <= superblock->s_inodes_per_group) {
+		  val = isFree & bitmask;
+		  if (val == 0) {
+		  	fprintf(stdout, "IFREE,%d\n", bit_num + inode_gp);
+		  }
+		  else {
+		  	usedinode_nums[n_usedinodes] = bit_num + inode_gp;
+		  	n_usedinodes++;
+		  }
+		}
+	  }
+	  bitmask = bitmask << 1;
   	}
   }
 }
 
-void p_inode() {
-  inodes = malloc(sizeof(struct ext2_inode) * superblock->s_inodes_count);
-}
 
 void cleanup() {
   free(superblock);
@@ -124,56 +136,60 @@ void cleanup() {
   free(inodes);
 }
 
-/*
-struct Inode {
-  char file_type;
-  uint16_t mode, owner, group, link_count;
-  uint32_t number, ctime, mtime, atime, size, n_blocks;
-  uint32_t bp[15];
-};
-
-Struct Inode* inodes;
-void print_inode() {
+void p_inode() {
   int modulo;
   int offset;
-  for (int i = 0; i < tot_groups; i++) {
-  	for (int j = 0; j < inodes_per_group; j++) {
-  	  int k = i * inodes_per_group + j;
-  	  modulo = (inode[k].number - 1) % inodes_per_group;
-  	  offset = group[i].inode_table * block_size;
-  	  int final_offset = offset + modulo + inode_size;
-  	  pread(fileFD, &inodes[k].mode, 2, final_offset + 0);
+  int gp;
+  char file_type;
+  inodes = malloc(sizeof(struct ext2_inode) * n_usedinodes);
+  for (int j = 0; j < n_usedinodes; j++) {
+  	  gp = (usedinode_nums[j] - 1) / superblock->s_inodes_per_group;
+  	  modulo = (usedinode_nums[j] - 1) % superblock->s_inodes_per_group;
+  	  offset = groups[gp].bg_inode_table * superblock->s_log_block_size;
+  	  int final_offset = offset + modulo * INODE_SIZE;
+  	  pread(fileFD, &inodes[j].i_mode, 2, final_offset + 0);
 
   	  // File type
-  	  if ((inodes[k].mode & 0x8000) && (inodes[k].mode & 0x2000)) {
-  	  	inodes[k].file_type = 's';
-  	  } else if (inodes[k].mode & 0x8000) {
-  	  	inodes[k].file_type = 'f';
-  	  } else if (inodes[k].mode & 0x4000) {
+  	  if ((inodes[j].i_mode & 0x8000) && (inodes[j].i_mode & 0x2000)) {
+  	  	file_type = 's';
+  	  } else if (inodes[j].i_mode & 0x8000) {
+  	  	file_type = 'f';
+  	  } else if (inodes[j].i_mode & 0x4000) {
   	  	// We have to do directory stuff here
-  	  	inodes[k].file_type = 'd';
+  	  	file_type = 'd';
   	  } else {
-  	  	inodes[k].file_type = '?';
+  	  	file_type = '?';
   	  }
 
+	  // Link count
+	  pread(fileFD, &inodes[j].i_links_count, 2, final_offset + 26);
+
+	  // Check if inode is valid: link count != 0, mode != 0
+	  if (inodes[j].i_links_count == 0 || inodes[j].i_mode == 0)
+	  	continue;
+
   	  // Owner
-  	  pread(fileFD, &inodes[k].owner, 2, final_offset + 2);
+  	  pread(fileFD, &inodes[j].i_uid, 2, final_offset + 2);
   	  // Group
-  	  &inodes[k].group = i;
-  	  // Link count
-  	  pread(fileFD, &inodes[k].link_count, 2, final_offset + 26);
+  	  //inodes[j].i_gid = gp;
+	  pread(fileFD, &inodes[j].i_gid, 2, final_offset + 24);
 	  // Creation Time
-	  pread(fileFD, &inodes[k].ctime, 4, final_offset + 12);
+	  pread(fileFD, &inodes[j].i_ctime, 4, final_offset + 12);
 	  // Modification Time
-	  pread(fileFD, &inodes[k].mtime, 4, final_offset + 16);
+	  pread(fileFD, &inodes[j].i_mtime, 4, final_offset + 16);
 	  // Access time
-	  pread(fileFD, &inodes[k].atime, 4, final_offset + 8);
+	  pread(fileFD, &inodes[j].i_atime, 4, final_offset + 8);
 	  // File size
-	  pread(fileFD, &inodes[k].size, 4, final_offset + 4);
+	  pread(fileFD, &inodes[j].i_size, 4, final_offset + 4);
 	  // N Blocks
-	  pread(fileFD, &inodes[k].n_blocks, 4, final_offset + 28);
+	  pread(fileFD, &inodes[j].i_blocks, 4, final_offset + 28);
 	  // Print it all out
+	 
 	  
+	  fprintf(stdout, "INODE,%d,%c,%o,%d,%d,%d,%d,%d,%d,%d,%d\n", usedinode_nums[j], 
+	  	  file_type, inodes[j].i_mode, inodes[j].i_uid, inodes[j].i_gid, inodes[j].i_ctime,
+	  	  inodes[j].i_mtime, inodes[j].i_atime, inodes[j].i_size, inodes[j].i_blocks);
+	  /*
 	  // Block pointers
 	  int blockpointer_offset = 40;
 	  for (int p = 0; p < 15; p++) {
@@ -184,10 +200,9 @@ void print_inode() {
 	  	}
 	  	blockpointer_offset += 4;
 	  }
-	}
+	  */
   }
 }
-*/
 
 int main(int argc, char *argv[]){
   // Check arguments

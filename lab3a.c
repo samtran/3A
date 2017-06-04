@@ -122,8 +122,8 @@ void p_ifree() {
 		  	n_usedinodes++;
 		  }
 		}
+	    bitmask = bitmask << 1;
 	  }
-	  bitmask = bitmask << 1;
   	}
   }
 }

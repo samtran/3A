@@ -1,3 +1,7 @@
+// NAME: Apurva Panse & Samantha Tran
+// UID: 504488023 & 804282884
+// EMAIL: apoorvapanse@ucla.edu & samanatha.tran95@gmail.com
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -332,7 +336,7 @@ void p_inode() {
 	  // Print it all out
 	 
 	  
-	  fprintf(stdout, "INODE,%d,%c,%o,%d,%d,%d,%s,%s,%s,%d,%d,", usedinode_nums[j], 
+	  fprintf(stdout, "INODE,%d,%c,%o,%u,%d,%d,%s,%s,%s,%d,%d,", usedinode_nums[j], 
 	  	  file_type, mode, inodes[j].i_uid, inodes[j].i_gid, inodes[j].i_links_count,createstring,
 	  	  modstring, accstring, inodes[j].i_size, inodes[j].i_blocks);
 	  

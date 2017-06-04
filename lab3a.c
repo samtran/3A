@@ -51,7 +51,6 @@ void p_superblock() {
 
 void p_group() {
   n_groups = superblock->s_blocks_count / superblock->s_blocks_per_group;
-  fprintf(stderr, "N groups: %d\n", n_groups);
   groups = malloc(sizeof(struct ext2_group_desc) * n_groups);
   for (int i = 0; i <= n_groups; i++) {	
 	if (n_groups != 0 && i == n_groups)

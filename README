@@ -1,2 +1,11 @@
-# 3A
-cs111
+#NAME:Samantha Tran, Apurva Panse
+#EMAIL: samantha.tran95@gmail.com
+#ID: 804282884 504488023
+
+Makefile: Has default option to build code, dist option to create tar.gz, and clean to clean enviroment
+
+README: Contains info about files included
+
+
+lab3a.c: Source code for lab 3A to explore file system. Outputs the following: a superblock summary, group summary for each group, free block entries\
+, free inodes, inode summary per inode, directory entires, and indirect block references (single, double, and triple).

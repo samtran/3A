@@ -22,7 +22,6 @@ int n_usedinodes;
 struct ext2_super_block* superblock;
 struct ext2_group_desc* groups;
 struct ext2_inode* inodes;
-struct ext2_dir_entry* dirs;
 __u32 *usedinode_nums;
 
 void p_superblock() {
@@ -135,7 +134,6 @@ void cleanup() {
   free(superblock);
   free(groups);
   free(inodes);
-  free(dirs);
 }
 
 void singleIndirect(int inodeNum, int finaloffset){ //final offset includes skipping over the 12 direct blocks
@@ -207,8 +205,69 @@ void tripleIndirect(int inodeNum, int finaloffset){
   }
 }
 
-void p_dir() {
+void p_dir(__u16 pi_num, __u16 pi_offset) {
+  __u32 bp; // block pointer
+  int entry_num = 0; 
+  __u32 inode;
+  __u16 rec_len;
+  __u8 name_len;
+  for (int i = 0; i < 12; i++) {
+  	// block pointer offset is 40, and each bp has an offset of 4
+  	pread(fileFD, &bp, 4, pi_offset + 40 + (i*4));
+  	if (bp != 0) {
+  	  int logical_os = 0;
+  	  int byte_os = bp * superblock->s_log_block_size;
+  	  while (logical_os < superblock->s_log_block_size) {
+  	  	pread(fileFD, &inode, 4, byte_os + logical_os + 0);
+  	  	pread(fileFD, &rec_len, 2, byte_os + logical_os + 4);
+  	  	if (inode != 0) {
+  	  	  pread(fileFD, &name_len, 1, byte_os + logical_os + 6);
+  	  	  fprintf(stdout, "DIRENT,%d,%d,%d,%d,%d,\'", pi_num, logical_os, 
+  	  	  	  inode, rec_len, name_len);
+  	  	  char n;
+  	  	  for (int b = 0; b < name_len; b++) {
+  	  	  	pread(fileFD, &n, 1, byte_os + logical_os + 8 + b);
+  	  	  	fprintf(stdout, "%c", n);
+  	  	  }
+  	  	  fprintf(stdout, "\'\n");
+  	  	}
+  	  	logical_os += rec_len;
+  	  	entry_num++;
+  	  }
+  	}
+  }
 
+  // Indirect
+  // Block pointer offset= 40 + ( 4 * 12) = 88
+  pread(fileFD, &bp, 4, pi_offset + 88);
+  if (bp != 0) {
+  	for (int n = 0; n < superblock->s_log_block_size / 4; n++) {
+  	  int logical_os = 0;
+  	  int byte_os = bp * superblock->s_log_block_size + (n * 4);
+  	  __u32 indirect;
+  	  pread(fileFD, &indirect, 4, byte_os);
+  	  if (indirect != 0) {
+  	  	byte_os = indirect * superblock->s_log_block_size;
+  	  	while (logical_os < superblock->s_log_block_size) {
+  	  	  pread(fileFD, &inode, 4, byte_os + logical_os + 0);
+  	  	  pread(fileFD, &rec_len, 2, byte_os + logical_os + 4);
+  	  	  if (inode != 0) {
+  	  	  	pread(fileFD, &name_len, 1, byte_os + logical_os + 6);
+  	  	  	fprintf(stdout, "DIRENT,%d,%d,%d,%d,%d,\'", pi_num, logical_os, 
+  	  	  		inode, rec_len, name_len);
+  	  	  	char n;
+  	  	  	for (int q = 0; q < name_len; q++) {
+  	  	  	  pread(fileFD, &n, 1, byte_os + logical_os + 8 + q);
+  	  	  	  fprintf(stdout, "%c", n);
+  	  	  	}
+  	  	  	fprintf(stdout, "\'\n");
+  	  	  }
+  	  	  logical_os += rec_len;
+  	  	  entry_num++;
+  	  	}
+  	  }
+  	}
+  }
 }
 
 void p_inode() {
@@ -218,7 +277,6 @@ void p_inode() {
   char file_type;
   
   inodes = malloc(sizeof(struct ext2_inode) * n_usedinodes);
-  dirs = malloc(sizeof(struct ext2_dir_entry) * n_usedinodes);
   for (int j = 0; j < n_usedinodes; j++) {
   	  gp = (usedinode_nums[j] - 1) / superblock->s_inodes_per_group;
   	  modulo = (usedinode_nums[j] - 1) % superblock->s_inodes_per_group;
@@ -235,6 +293,7 @@ void p_inode() {
   	  } else if (inodes[j].i_mode & 0x4000) {
   	  	// We have to do directory stuff here
   	  	file_type = 'd';
+  	  	p_dir(usedinode_nums[j], final_offset);
   	  } else {
   	  	file_type = '?';
   	  }
